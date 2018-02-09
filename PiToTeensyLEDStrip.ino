@@ -1,146 +1,82 @@
 #include <Adafruit_NeoPixel.h>
 
 #define PIN 20
+#define START_MARKER 254
+#define END_MARKER 255
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(250, PIN, NEO_GRB + NEO_KHZ800);
+const int ledCount = 250;
+// For debugging
+int timeToColor = 0;
+boolean frameReady = false;
+byte rgbData[ledCount];
+
+// Set up the LED strip
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(ledCount, PIN, NEO_GRB + NEO_KHZ800);
 
 
 void setup() {
-  Serial1.begin(9600);
-  
+  // Start the UART
+  Serial1.begin(115200);
+
   strip.begin();
   strip.show(); // Initialize all pixels to 'off'
 }
 
 void loop() {
-  if (Serial1.available() > 0)
-  {
-    int modeNumber = GetMode();
-    Serial1.print("Value Serial1 got: ");
-    Serial1.println(modeNumber);
-    setStripMode(modeNumber);
-    delay(250);
+
+  // For calculating the time spent durring a loop
+  unsigned long startTime = millis();
+
+
+  for (int i = 0; i < ledCount; i++) {
+    // Holds the color for this pixel
+    unsigned long color = 0;
+    // For each color
+    for (int j = 0; j < 3; j++) {
+      // Assembly each 8 bit component (R,G,B) in to a single 32bit number
+      while (!Serial1.available()) {
+        // Wait until there is data in the serial buffer
+      }
+
+      // Get the color component for this pixel, set the first 8 bits of the 24 bit color,
+      // then shift those over to make room for the next 8
+      color = (color | (Serial1.read() << 8 * j));
+    }
+
+    // Calculate the ammount of time it took to get all the color components
+    timeToColor = millis() - startTime;
+
+    // Now that we have the color for this pixel, update it in the buffer
+    strip.setPixelColor(i, color);
   }
 
+  // Update all the LEDS
+  strip.show();
+
+  // Print null character so Pi knows shifting is done
+  Serial1.println('\0');
+  delay(500);
 }
 
-int GetMode()
-{
-  int modeNumber = 0;
+void getFrame() {
+  // This function gets the color
+  if(Serial.available > 0) {
+    // If there is Serial date in the buffer
+    byte recievedData = Serial.read();
 
-  while (Serial1.available() > 0)
-  {
-    char val = Serial1.read();
-    modeNumber *= 10;
-    modeNumber += (val - '0');
-    delay(25);
-  }
-
-  return modeNumber;
-}
-
-void setStripMode(int mode) {
-  switch(mode){
-    case 0:
-      colorWipe(strip.Color(255, 0, 0), 0); // Red
-      colorWipe(strip.Color(0, 255, 0), 0); // Green
-      colorWipe(strip.Color(0, 0, 255), 0); // Blue
+    switch (recievedData):
+    case START_MARKER:
+      // Set begging buffer position
       break;
-    case 1:
-      theaterChase(strip.Color(127, 0, 0), 50); // Red
-      break;
-    case 2:
-      rainbow(0);
-      rainbowCycle(1);
+    case END_MARKER:
+      // Set update frame flag
       break;
     default:
-      colorWipe(strip.Color(0,0,0), 0);
+      // Add recieved data to buffer
       break;
-      
-  } 
- }
- 
- // Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, c);
-    strip.show();
-    delay(wait);
   }
 }
 
-void rainbow(uint8_t wait) {
-  uint16_t i, j;
-
-  for(j=0; j<256; j++) {
-    for(i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel((i+j) & 255));
-    }
-    strip.show();
-    delay(wait);
-  }
-}
-
-// Slightly different, this makes the rainbow equally distributed throughout
-void rainbowCycle(uint8_t wait) {
-  uint16_t i, j;
-
-  for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
-    }
-    strip.show();
-    delay(wait);
-  }
-}
-
-//Theatre-style crawling lights.
-void theaterChase(uint32_t c, uint8_t wait) {
-  for (int j=0; j<10; j++) {  //do 10 cycles of chasing
-    for (int q=0; q < 3; q++) {
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, c);    //turn every third pixel on
-      }
-      strip.show();
-
-      delay(wait);
-
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, 0);        //turn every third pixel off
-      }
-    }
-  }
-}
-
-//Theatre-style crawling lights with rainbow effect
-void theaterChaseRainbow(uint8_t wait) {
-  for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
-    for (int q=0; q < 3; q++) {
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
-      }
-      strip.show();
-
-      delay(wait);
-
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, 0);        //turn every third pixel off
-      }
-    }
-  }
-}
-
-// Input a value 0 to 255 to get a color value.
-// The colours are a transition r - g - b - back to r.
-uint32_t Wheel(byte WheelPos) {
-  WheelPos = 255 - WheelPos;
-  if(WheelPos < 85) {
-    return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
-  }
-  if(WheelPos < 170) {
-    WheelPos -= 85;
-    return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
-  }
-  WheelPos -= 170;
-  return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+void updateFrame() {
+  // Proccess buffer and update LEDS
 }
